@@ -1,0 +1,38 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+###### front ########
+
+
+# dependencies
+chat-front/node_modules
+chat-front/.pnp
+chat-front/.pnp.js
+
+# testing
+chat-front/coverage
+
+# production
+chat-front/build
+
+# misc
+chat-front/.DS_Store
+chat-front/.env.local
+chat-front/.env.development.local
+chat-front/.env.test.local
+chat-front/.env.production.local
+
+chat-front/npm-debug.log*
+chat-front/yarn-debug.log*
+chat-front/yarn-error.log*
+
+
+###### back ########
+
+.gradle/
+.idea/.gitignore
+.idea/gradle.xml
+.idea/inspectionProfiles/
+.idea/jarRepositories.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/
