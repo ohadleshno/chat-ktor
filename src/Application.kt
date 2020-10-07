@@ -2,7 +2,6 @@ package com.example
 
 import io.ktor.application.*
 import io.ktor.response.*
-import io.ktor.request.*
 import io.ktor.routing.*
 import io.ktor.http.*
 import io.ktor.websocket.*
@@ -11,6 +10,9 @@ import java.time.*
 import com.fasterxml.jackson.databind.*
 import io.ktor.jackson.*
 import io.ktor.features.*
+import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.collections.LinkedHashSet
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
 
@@ -35,13 +37,32 @@ fun Application.module(testing: Boolean = false) {
             call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
-        webSocket("/myws/echo") {
-            send(Frame.Text("Hi from server"))
-            while (true) {
-                val frame = incoming.receive()
-                if (frame is Frame.Text) {
-                    send(Frame.Text("Client said: " + frame.readText()))
+        val clients = Collections.synchronizedSet(LinkedHashSet<ChatClient>())
+
+        webSocket("/chat") { // this: DefaultWebSocketSession
+            val client = ChatClient(this)
+            clients += client
+            try {
+                while (true) {
+                    when (val frame = incoming.receive()) {
+                        is Frame.Text -> {
+                            val text = frame.readText()
+                            // Iterate over all the connections
+                            val textToSend = "${client.name} said: $text"
+                            for (other in clients.toList()) {
+                                if(other != client) {
+                                    other.session.outgoing.send(Frame.Text(textToSend))
+                                }
+                            }
+
+                            if(text.equals("end",ignoreCase = true)){
+                                close(CloseReason(CloseReason.Codes.NORMAL,"Client exited"))
+                            }
+                        }
+                    }
                 }
+            } finally {
+                clients -= client
             }
         }
 
@@ -53,3 +74,10 @@ fun Application.module(testing: Boolean = false) {
 
 
 data class StolenResponse(val aba:String)
+
+
+class ChatClient(val session: DefaultWebSocketSession) {
+    companion object { var lastId = AtomicInteger(0) }
+    val id = lastId.getAndIncrement()
+    val name = "user$id"
+}
