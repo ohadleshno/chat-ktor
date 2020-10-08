@@ -10,7 +10,9 @@ import java.time.*
 import com.fasterxml.jackson.databind.*
 import io.ktor.jackson.*
 import io.ktor.features.*
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.LinkedHashSet
 
@@ -37,34 +39,43 @@ fun Application.module(testing: Boolean = false) {
             call.respondText("HELLO WORLD!", contentType = ContentType.Text.Plain)
         }
 
-        val clients = Collections.synchronizedSet(LinkedHashSet<ChatClient>())
+        val rooms = ConcurrentHashMap<String, MutableSet<ChatClient>>()
 
-        webSocket("/chat") { // this: DefaultWebSocketSession
-            val client = ChatClient(this)
-            clients += client
-            try {
-                while (true) {
-                    when (val frame = incoming.receive()) {
-                        is Frame.Text -> {
-                            val text = frame.readText()
-                            // Iterate over all the connections
-                            val textToSend = "${client.name} said: $text"
-                            for (other in clients.toList()) {
-                                if(other != client) {
-                                    other.session.outgoing.send(Frame.Text(textToSend))
+        route("/chat") {
+            webSocket("/{roomId}") {
+                val roomId = call.parameters["roomId"]
+                val client = ChatClient(this)
+                addRoomChat(roomId, client, rooms)
+
+                try {
+                    while (true) {
+                        when (val frame = incoming.receive()) {
+                            is Frame.Text -> {
+                                val text = frame.readText()
+                                // Iterate over all the connections in the room
+                                val textToSend = "${client.name} said: $text"
+                                for (other in rooms[roomId]?.toList()!!) {
+                                    if (other != client) {
+                                        other.session.outgoing.send(Frame.Text(textToSend))
+                                    }
                                 }
-                            }
 
-                            if(text.equals("end",ignoreCase = true)){
-                                close(CloseReason(CloseReason.Codes.NORMAL,"Client exited"))
+                                if (text.equals("end", ignoreCase = true)) {
+                                    close(CloseReason(CloseReason.Codes.NORMAL, "Client exited"))
+                                }
                             }
                         }
                     }
                 }
-            } finally {
-                clients -= client
+                catch(e : ClosedReceiveChannelException) {
+                    println("${client.name} exited")
+                }
+                finally {
+                        rooms[roomId]!! -= client
+                }
             }
         }
+
 
         get("/json/jackson") {
             call.respond(StolenResponse("aa"))
@@ -73,11 +84,27 @@ fun Application.module(testing: Boolean = false) {
 }
 
 
-data class StolenResponse(val aba:String)
+fun addRoomChat(
+    roomId: String?,
+    chatClient: ChatClient,
+    rooms: ConcurrentHashMap<String, MutableSet<ChatClient>>,
+) {
+    if (roomId == null){
+        return
+    }
+
+    rooms.putIfAbsent(roomId, Collections.synchronizedSet(LinkedHashSet<ChatClient>()))
+    rooms[roomId]!! += chatClient
+}
+
+data class StolenResponse(val aba: String)
 
 
 class ChatClient(val session: DefaultWebSocketSession) {
-    companion object { var lastId = AtomicInteger(0) }
+    companion object {
+        var lastId = AtomicInteger(0)
+    }
+
     val id = lastId.getAndIncrement()
     val name = "user$id"
 }
