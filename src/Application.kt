@@ -68,7 +68,7 @@ fun Application.module(testing: Boolean = false) {
                     }
                 }
                 catch(e : ClosedReceiveChannelException) {
-                    print("${client.name} exited")
+                    println("${client.name} exited")
                 }
                 finally {
                         rooms[roomId]!! -= client
